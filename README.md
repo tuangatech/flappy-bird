@@ -51,6 +51,12 @@ Opening `index.html` directly (`file://`) also works in Chrome, **but Safari
 blocks Web Audio on `file://` pages**, so the game runs silently there. Serve
 over HTTP (above) or use the deployed URL to get sound in Safari.
 
+**No sound on iPhone?** The game switches its audio session to *playback* so
+the Ring/Silent switch shouldn't mute it, but if you still hear nothing:
+check the Ring/Silent switch (or Control Center mute), raise the volume
+buttons while the game tab is open, and make sure Focus/Silent mode isn't
+overriding media audio.
+
 ## Project structure
 
 ```

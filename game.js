@@ -322,12 +322,32 @@ function setMuted(m) {
   if (masterGain) masterGain.gain.value = m ? 0 : 1;
 }
 
+// iOS mutes Web Audio with the hardware Ring/Silent switch unless the page's
+// audio session is 'playback'. Modern Safari (iOS 16.4+) exposes
+// navigator.audioSession; older iOS switches category when an HTML <audio>
+// element plays. Do both. (iPhone Chrome is WebKit, so this covers it too.)
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
+
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA==';
+let kickEl = null;
+function iosAudioKick() {
+  if (kickEl) return;
+  try {
+    kickEl = document.createElement('audio');
+    kickEl.setAttribute('playsinline', '');
+    kickEl.loop = true; // keep the playback session alive
+    kickEl.src = SILENT_WAV;
+    kickEl.play().catch(() => { kickEl = null; }); // retry on next gesture
+  } catch (e) { kickEl = null; }
+}
+
 // Unlock audio on user gestures. Safari is strict: the context must be
 // created/resumed inside the gesture AND (on older versions) a silent
 // buffer must be played to open the output. Keep trying on every gesture
 // until the context reports 'running'.
 let audioUnlocked = false;
 function unlockAudio() {
+  iosAudioKick(); // must also happen inside a gesture
   if (audioUnlocked) return;
   const ac = audioCtx(); // creates + resume()s inside the gesture
   if (!ac) return;
@@ -841,21 +861,24 @@ function render() {
 
   ctx.restore(); // end screen-shake transform
 
-  // sound indicator (top-right): solid once the audio context is running,
-  // translucent while audio is still blocked/not yet unlocked by a gesture
-  const audioLive = actx && actx.state === 'running';
-  ctx.globalAlpha = audioLive ? 0.95 : 0.45;
-  ctx.font = '22px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(muted ? '🔇' : '🔊', W - 28, 28);
-  ctx.globalAlpha = 1;
-  // Safari blocks Web Audio entirely on file:// pages — surface that
-  if (actx && !audioLive && location.protocol === 'file:') {
-    ctx.font = '11px "Trebuchet MS", sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(84,56,71,0.9)';
-    ctx.fillText('sound blocked on file:// — serve over http', W - 12, 50);
+  // sound indicator (top-right, menu screens only so it never eats a
+  // mid-flight tap): solid once the audio context is running, translucent
+  // while audio is still blocked/not yet unlocked by a gesture
+  if (state === STATE.TITLE || state === STATE.OVER) {
+    const audioLive = actx && actx.state === 'running';
+    ctx.globalAlpha = audioLive ? 0.95 : 0.45;
+    ctx.font = '22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(muted ? '🔇' : '🔊', W - 28, 28);
+    ctx.globalAlpha = 1;
+    // Safari blocks Web Audio entirely on file:// pages — surface that
+    if (actx && !audioLive && location.protocol === 'file:') {
+      ctx.font = '11px "Trebuchet MS", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(84,56,71,0.9)';
+      ctx.fillText('sound blocked on file:// — serve over http', W - 12, 50);
+    }
   }
 
   // white flash on impact
@@ -868,8 +891,10 @@ function render() {
 /* ---------------- Input ---------------- */
 function press(x, y) {
   audioCtx(); // unlock audio on first gesture
-  // sound icon (top-right corner) toggles mute
-  if (x !== null && x >= W - 48 && x <= W - 8 && y >= 8 && y <= 48) {
+  // sound icon (top-right corner) toggles mute — only where it's drawn,
+  // so a tap near the corner during play still flaps
+  if ((state === STATE.TITLE || state === STATE.OVER) &&
+      x !== null && x >= W - 48 && x <= W - 8 && y >= 8 && y <= 48) {
     setMuted(!muted);
     return;
   }
