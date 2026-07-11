@@ -248,11 +248,16 @@ function makeBackground(pal) {
   return c;
 }
 
-let dayBg = null, nightBg = null;
+// Backgrounds are drawn as repeating patterns (single fill) rather than two
+// images butted edge-to-edge — fractional canvas scales would otherwise show
+// a hairline seam where the copies meet.
+let dayBg = null, nightBg = null, dayPat = null, nightPat = null;
 function rebuildBackgrounds() { // regenerated on resize (depends on W)
   bgLayout = makeBgLayout();
   dayBg = makeBackground(BG_DAY);
   nightBg = makeBackground(BG_NIGHT);
+  dayPat = ctx.createPattern(dayBg, 'repeat');
+  nightPat = ctx.createPattern(nightBg, 'repeat');
 }
 rebuildBackgrounds();
 
@@ -291,6 +296,7 @@ function makeGroundTile() {
   return c;
 }
 const groundTile = makeGroundTile();
+const groundPat = ctx.createPattern(groundTile, 'repeat');
 
 /* ---------------- Audio (Web Audio API) ---------------- */
 let actx = null, masterGain = null;
@@ -681,22 +687,26 @@ function drawBird() {
 }
 
 function drawGround() {
-  for (let x = groundX; x < W; x += groundTile.width) {
-    ctx.drawImage(groundTile, Math.round(x), GROUND_Y);
-  }
+  ctx.save();
+  ctx.translate(groundX, GROUND_Y);
+  ctx.fillStyle = groundPat;
+  ctx.fillRect(-groundX, 0, W, GROUND_H);
+  ctx.restore();
 }
 
 function drawBackground() {
-  const x = Math.round(bgX);
-  ctx.drawImage(dayBg, x, 0);
-  ctx.drawImage(dayBg, x + W, 0);
+  ctx.save();
+  ctx.translate(bgX, 0); // pattern origin scrolls with the background
+  ctx.fillStyle = dayPat;
+  ctx.fillRect(-bgX, 0, W, GROUND_Y);
   if (nightT > 0.01) {
     // crossfade toward the night variant (same layout, darker palette + stars)
     ctx.globalAlpha = nightT;
-    ctx.drawImage(nightBg, x, 0);
-    ctx.drawImage(nightBg, x + W, 0);
+    ctx.fillStyle = nightPat;
+    ctx.fillRect(-bgX, 0, W, GROUND_Y);
     ctx.globalAlpha = 1;
   }
+  ctx.restore();
 }
 
 function drawMedal(cx, cy, medal) {
