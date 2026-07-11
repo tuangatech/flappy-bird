@@ -294,6 +294,7 @@ const groundTile = makeGroundTile();
 
 /* ---------------- Audio (Web Audio API) ---------------- */
 let actx = null, masterGain = null;
+let muted = localStorage.getItem('flappy.muted') === '1';
 
 function audioCtx() {
   if (!actx) {
@@ -301,7 +302,7 @@ function audioCtx() {
     if (!AC) return null; // no Web Audio support: play silently
     actx = new AC();
     masterGain = actx.createGain();
-    masterGain.gain.value = 1;
+    masterGain.gain.value = muted ? 0 : 1;
     masterGain.connect(actx.destination);
   }
   // browsers create/keep the context 'suspended' until a user gesture
@@ -309,9 +310,31 @@ function audioCtx() {
   return actx;
 }
 
-// unlock audio on the very first gesture anywhere on the page
-window.addEventListener('pointerdown', () => audioCtx(), { once: true });
-window.addEventListener('keydown', () => audioCtx(), { once: true });
+function setMuted(m) {
+  muted = m;
+  localStorage.setItem('flappy.muted', m ? '1' : '0');
+  if (masterGain) masterGain.gain.value = m ? 0 : 1;
+}
+
+// Unlock audio on user gestures. Safari is strict: the context must be
+// created/resumed inside the gesture AND (on older versions) a silent
+// buffer must be played to open the output. Keep trying on every gesture
+// until the context reports 'running'.
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  const ac = audioCtx(); // creates + resume()s inside the gesture
+  if (!ac) return;
+  try {
+    const src = ac.createBufferSource();
+    src.buffer = ac.createBuffer(1, 1, 22050); // 1-sample silent buffer
+    src.connect(ac.destination);
+    src.start(0);
+  } catch (e) { /* ignore */ }
+  if (ac.state === 'running') audioUnlocked = true;
+}
+['pointerdown', 'mousedown', 'touchend', 'keydown'].forEach(ev =>
+  window.addEventListener(ev, unlockAudio, true));
 
 function tone({ type = 'square', from = 600, to = from, dur = 0.08, vol = 0.2, delay = 0 }) {
   try {
@@ -358,18 +381,18 @@ function noise({ dur = 0.15, vol = 0.25, delay = 0 }) {
 }
 
 const sfx = {
-  flap()  { tone({ type: 'sine', from: 520, to: 170, dur: 0.10, vol: 0.25 }); },
+  flap()  { tone({ type: 'sine', from: 520, to: 170, dur: 0.10, vol: 0.4 }); },
   point() {
-    tone({ type: 'square', from: 920, dur: 0.06, vol: 0.15 });
-    tone({ type: 'square', from: 1240, dur: 0.09, vol: 0.15, delay: 0.07 });
+    tone({ type: 'square', from: 920, dur: 0.06, vol: 0.25 });
+    tone({ type: 'square', from: 1240, dur: 0.09, vol: 0.25, delay: 0.07 });
   },
   hit()   {
-    noise({ dur: 0.15, vol: 0.3 });
-    tone({ type: 'square', from: 220, to: 60, dur: 0.2, vol: 0.25 });
+    noise({ dur: 0.15, vol: 0.4 });
+    tone({ type: 'square', from: 220, to: 60, dur: 0.2, vol: 0.35 });
   },
-  die()   { tone({ type: 'sawtooth', from: 380, to: 70, dur: 0.45, vol: 0.2, delay: 0.15 }); },
-  thud()  { tone({ type: 'sine', from: 130, to: 55, dur: 0.12, vol: 0.22 }); },
-  swoosh() { noise({ dur: 0.2, vol: 0.12 }); },
+  die()   { tone({ type: 'sawtooth', from: 380, to: 70, dur: 0.45, vol: 0.28, delay: 0.15 }); },
+  thud()  { tone({ type: 'sine', from: 130, to: 55, dur: 0.12, vol: 0.3 }); },
+  swoosh() { noise({ dur: 0.2, vol: 0.18 }); },
 };
 
 /* ---------------- Game state ---------------- */
@@ -808,6 +831,16 @@ function render() {
 
   ctx.restore(); // end screen-shake transform
 
+  // sound indicator (top-right): solid once the audio context is running,
+  // translucent while audio is still blocked/not yet unlocked by a gesture
+  const audioLive = actx && actx.state === 'running';
+  ctx.globalAlpha = audioLive ? 0.95 : 0.45;
+  ctx.font = '22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(muted ? '🔇' : '🔊', W - 28, 28);
+  ctx.globalAlpha = 1;
+
   // white flash on impact
   if (flashT > 0) {
     ctx.fillStyle = `rgba(255,255,255,${Math.min(1, flashT / 0.12)})`;
@@ -818,6 +851,11 @@ function render() {
 /* ---------------- Input ---------------- */
 function press(x, y) {
   audioCtx(); // unlock audio on first gesture
+  // sound icon (top-right corner) toggles mute
+  if (x !== null && x >= W - 48 && x <= W - 8 && y >= 8 && y <= 48) {
+    setMuted(!muted);
+    return;
+  }
   switch (state) {
     case STATE.TITLE:
       if (x === null || inBtn(startBtn, x, y)) goReady();
@@ -844,6 +882,8 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space') {
     e.preventDefault();
     if (!e.repeat) press(null, null);
+  } else if (e.code === 'KeyM') {
+    setMuted(!muted);
   } else if (e.code === 'KeyP' && state === STATE.PLAY) {
     paused = !paused;
   } else if (e.code === 'KeyR' && (state === STATE.OVER || state === STATE.DYING)) {

@@ -35,6 +35,7 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 | `Space` / mouse click / tap | Flap |
 | `P` | Pause / resume (auto-pauses when the window loses focus) |
 | `R` | Restart after game over |
+| `M` / click 🔊 icon | Mute / unmute (remembered in `localStorage`) |
 
 ## Run locally
 
