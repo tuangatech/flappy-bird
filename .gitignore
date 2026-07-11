@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Vercel CLI (created by `vercel` deploys, linked to a personal account)
+.vercel/
+
+# Claude Code local settings (personal permissions, not shared)
+.claude/settings.local.json
+
+# dependencies (if test/serve tooling is ever added)
+node_modules/

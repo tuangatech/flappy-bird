@@ -17,10 +17,13 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 - 🔊 Web Audio sound effects — flap, score ding, hit smack, ground thud
 - 💥 Physical impact effects — knockback recoil off pipes, tumble rotation, dampened
   ground bounce, screen shake, white flash
+- 📈 Progressive difficulty — the pipe gap slowly tightens as you score (160 px → 132 px)
+- 🌙 Day → night cycle — the sky crossfades to a starry night as your score climbs,
+  cycling back to day every 40 points
 - 📱 Adaptive screen — portrait phones get the original tall view (~1 pipe visible),
   desktops get a wide 800×600 view (2–3 pipes); identical difficulty on both
 - 🖥️ Crisp on high-DPI/Retina displays (`devicePixelRatio`-aware rendering)
-- 🏅 Medals (Bronze / Silver / Gold / Platinum at 10 / 20 / 30 / 40 points) and a
+- 🏅 Medals (Bronze / Silver / Gold / Platinum at 10 / 25 / 40 / 60 points) and a
   best score persisted in `localStorage`
 - ⚙️ Delta-time physics (consistent speed on 60 Hz and 144 Hz monitors) and pipe
   object pooling (no GC stutter)
