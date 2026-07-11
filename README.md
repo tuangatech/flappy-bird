@@ -39,19 +39,17 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 
 ## Run locally
 
-No build step and no server required — just open the file:
-
-```bash
-open index.html          # macOS
-```
-
-Or, if you prefer serving it over HTTP:
+No build step — the quickest way is a tiny local server:
 
 ```bash
 npx serve .              # then visit http://localhost:3000
 # or
 python3 -m http.server   # then visit http://localhost:8000
 ```
+
+Opening `index.html` directly (`file://`) also works in Chrome, **but Safari
+blocks Web Audio on `file://` pages**, so the game runs silently there. Serve
+over HTTP (above) or use the deployed URL to get sound in Safari.
 
 ## Project structure
 

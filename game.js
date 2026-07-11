@@ -840,6 +840,13 @@ function render() {
   ctx.textBaseline = 'middle';
   ctx.fillText(muted ? '🔇' : '🔊', W - 28, 28);
   ctx.globalAlpha = 1;
+  // Safari blocks Web Audio entirely on file:// pages — surface that
+  if (actx && !audioLive && location.protocol === 'file:') {
+    ctx.font = '11px "Trebuchet MS", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(84,56,71,0.9)';
+    ctx.fillText('sound blocked on file:// — serve over http', W - 12, 50);
+  }
 
   // white flash on impact
   if (flashT > 0) {
