@@ -4,14 +4,14 @@ A browser-based clone of Flappy Bird. The player controls a bird named **Faby** 
 
 Visual reference: see [flappy-bird-screens.jpg](./flappy-bird-screens.jpg) for the original mobile game screens (title screen, "Get Ready" screen, and in-game play).
 
-## ✅ Decisions
+## 🛠️ Tech Stack & Design Decisions
 
 - **Stack**: Vanilla JavaScript + HTML5 Canvas, no build step, no dependencies.
 - **Graphics**: Hand-drawn pixel art rendered procedurally on canvas (no image assets).
 - **Audio**: Sound effects (flap, score, hit, die) synthesized with the Web Audio API (no audio files).
 - **Canvas**: Adaptive — fixed logical height of 600 px; logical width follows the screen's aspect ratio, clamped between 360 (portrait phones) and 800 (widescreen desktop).
 
-## 💻 Core Browser Engine Specs
+## 💻 Engine & Platform Specs
 
 - **Technology Stack**: HTML5 Canvas API with Vanilla JavaScript (no framework needed).
 - **Canvas Size (adaptive)**: Logical height is always 600 px. Logical width adapts to the window's aspect ratio, clamped to [360, 800] — a phone in portrait plays the original's tall view (~1 pipe visible), a desktop plays the wide 800 × 600 view (2–3 pipes visible). Physics and difficulty are identical on both since height, gravity, gap, and scroll speed are unchanged.
@@ -19,27 +19,39 @@ Visual reference: see [flappy-bird-screens.jpg](./flappy-bird-screens.jpg) for t
 - **Mobile**: Touch input via `pointerdown` (with `touch-action: none` to suppress browser gestures), `user-scalable=no` viewport, UI copy switches to "tap" wording, keyboard hints hidden on coarse-pointer devices.
 - **Target Frame Rate**: Consistent 60 FPS using `requestAnimationFrame`.
 
-## 🕹️ Desktop Gameplay & Physics Tuning
+## 🕹️ Gameplay & Physics Tuning
 
 Because a desktop screen offers a much wider field of view than a mobile phone, the standard mobile physics parameters must be scaled up so the player cannot react too easily.
 
-- **Input Handling**: Listen for `keydown` (specifically the Spacebar) and `mousedown` / `pointerdown` (left mouse click). Prevent the default browser scrolling behavior when the spacebar is pressed.
+- **Controls**:
+  - **Flap**: `Space`, left mouse click, or touch tap (`pointerdown`). Default browser scrolling on Spacebar is suppressed.
+  - **Pause**: `P` toggles; the game also auto-pauses when the window loses focus (`blur`), with a "Paused" overlay.
+  - **Restart**: `R` from the game-over (or dying) state.
+  - **Mute**: `M`, or the 🔊 icon shown on the title and game-over screens (hidden during play so a corner tap can't eat a flap). Preference persists in `localStorage`.
 - **Bird Physics**:
   - **Gravity**: Increase downward acceleration relative to a mobile version so the bird falls quickly.
   - **Jump Force**: A snappy, instantaneous upward velocity boost.
   - **Tilt Rotation**: Rotate the bird sprite up to +20 degrees during a jump, and slowly nose-dive down to -70 degrees when falling.
 - **Pipe Architecture**:
-  - **Horizontal Gap (Spacing)**: Space the pipe pairs roughly 300 to 350 pixels apart horizontally. This ensures 2 to 3 sets of pipes are always visible on the wider screen at once.
+  - **Horizontal Gap (Spacing)**: Pipe pairs start 320 px apart (2 to 3 sets visible on the wide desktop screen) and tighten with the score (see Progressive Difficulty below).
   - **Vertical Passing Gap**: Starts at a friendly 160 px and shrinks with the score (see Progressive Difficulty below), never below 132 px.
-  - **Scroll Speed**: Set to roughly 200 to 250 pixels per second moving left (constant).
+  - **Scroll Speed**: Starts at 225 pixels per second moving left and rises with the score (see Progressive Difficulty below).
 
-## 📈 Progressive Difficulty & Ambience
+## 📈 Progressive Difficulty
 
-- **Gap Shrink**: The vertical pipe opening starts at **160 px** and narrows by **0.8 px per point scored**, with a floor of **132 px** (reached at score 35). Each pipe captures the current gap when it spawns/recycles, so pipes already on screen never visibly change.
-- **Day → Night Cycle**: The background crossfades from the daytime palette to a night one (dark blue sky, stars, dimmed clouds/skyline/bushes) as the score climbs — full night at 20 points, back to day at 40, repeating every 40 points. Both variants are pre-rendered from the same random layout so the crossfade is seamless. Pipes, ground, and the bird stay in their day colors for readability.
-- **Constant Elsewhere**: Scroll speed, pipe spacing, gravity, and flap impulse do not ramp — the challenge comes from the tightening gap and the player's endurance, in the spirit of the original.
+Every difficulty knob ramps **linearly with the score** from a `start` value (ramp begins at score `from`) to an `end` cap (reached at score `to`). All knobs live in the `DIFFICULTY` config at the top of `game.js` — each is independently tunable.
 
-## 💥 Physical Effects
+| Knob | Start value | End value (cap) | Ramp begins | Cap reached |
+|---|---|---|---|---|
+| Vertical pipe gap | 160 px | 132 px | score 10 | score 60 |
+| Scroll speed | 225 px/s | 300 px/s | score 30 | score 130 |
+| Pipe spacing (horizontal) | 320 px | 260 px | score 50 | score 150 |
+
+- **Staggered onset**: the gap starts tightening at 10, speed starts rising at 30, and spacing starts closing at 50 — difficulty arrives in layers rather than all at once, and each new ramp reads as a milestone. Everything is at full difficulty by score 150.
+- **Per-pipe capture**: each pipe captures the current gap and spacing when it spawns/recycles, so pipes already on screen never visibly change; speed applies globally (ground scroll matches pipe speed).
+- **Constant**: gravity and flap impulse never change — the bird always handles the same; only the world gets harder.
+
+## 💥 Impact Physics & Game Feel
 
 Impacts should feel physical rather than scripted — the bird reacts to *what* it hit and *how*, instead of simply freezing and dropping.
 
@@ -71,11 +83,33 @@ Follow the look and feel of the original game screens in [flappy-bird-screens.jp
   - **Title Screen**: Game logo, animated floating bird, and a Start button (see screen 1 of the reference).
   - **Get Ready Screen**: "Get Ready" banner with a tap/press hint before the first flap starts the run (see screen 2 of the reference). Show "Press Space or Click to Jump" for desktop.
   - **In-Game**: Score counter at top, pipes scrolling in from the right (see screen 3 of the reference).
-  - **Game Over Screen**: A centered panel showing the final score, a medal classification (Bronze ≥ 10, Silver ≥ 25, Gold ≥ 40, Platinum ≥ 60), the high score, a "Try Again" button, and a keyboard shortcut (like `R`) to instantly restart.
+  - **Game Over Screen**: A centered panel that slides/fades in, showing the final score, a medal classification (Bronze ≥ 25, Silver ≥ 50, Gold ≥ 100, Platinum ≥ 150), the high score with a rotated red "NEW" badge on a fresh record, a "Try Again" button, and a keyboard shortcut (`R`) to instantly restart.
 - **The Horizon Line**: The scrolling ground texture should occupy the bottom 15% to 20% of the canvas height to properly anchor the scene. City skyline and clouds form the static/parallax background above it.
+- **Day → Night Cycle (ambience)**: The background crossfades from the daytime palette to a night one (dark blue sky, stars, dimmed clouds/skyline/bushes) as the score climbs — full night at 20 points, back to day at 40, repeating every 40 points. Both variants are pre-rendered from the same random layout so the crossfade is seamless. Pipes, ground, and the bird stay in their day colors for readability.
 
-## ⚡ Technical Implementation Recommendations
+## 🔊 Audio & Sound Design
 
-- **Delta Time Physics**: Tie bird movement and pipe scrolling to frame delta time (`dt`) rather than assuming a flat 60Hz monitor. If a user plays on a 144Hz desktop monitor, the game will run at double speed without delta time tracking.
-- **Invisible Score Triggers**: Place a vertical bounding box exactly in line with the right edge of the pipes. When the bird's X coordinate crosses this box, increment the score counter and play an audio blip.
-- **Object Pooling**: Do not constantly destroy and recreate JavaScript objects for the pipes, as this causes browser garbage collection stutter. Instead, recycle old pipes that exit the left side of the canvas by moving them back to the far right side with a newly randomized height calculation.
+All sound is synthesized at runtime with the Web Audio API — the project ships zero audio files.
+
+- **Sound Set**: flap (sine sweep down, a wing "swoosh"), score (two-tone square ding), hit (low-pass filtered noise burst + low square drop), die (descending sawtooth sweep), ground thud (low sine drop), and a transition swoosh between screens.
+- **Mixing**: every voice routes through a single master `GainNode` — one place to mute or set volume.
+- **Autoplay/Unlock Strategy** (hard-won, browser-specific):
+  - The `AudioContext` is created and `resume()`d **inside user-gesture handlers** (`pointerdown`, `mousedown`, `touchend`, `keydown`), retrying on every gesture until the context reports `running`.
+  - A 1-sample **silent buffer is played during the gesture** — required by older Safari to open the output.
+  - **iOS**: `navigator.audioSession.type = 'playback'` (iOS 16.4+) plus a silent looping `<audio>` element started on first touch, so the hardware Ring/Silent switch does not mute the game. (iPhone Chrome is WebKit and behaves like iPhone Safari.)
+  - Sound calls are wrapped so audio failures can never crash gameplay.
+- **Known Limitation**: Safari refuses Web Audio on `file://` pages — the game shows an in-canvas hint and plays silently; serve over HTTP for sound.
+- **Status Indicator**: the 🔊/🔇 icon (title & game-over screens) renders translucent while the context is blocked and solid once running — doubling as an audio-health diagnostic.
+
+## ⚡ Rendering & Performance
+
+- **Delta Time Physics**: Bird movement and pipe scrolling are tied to frame delta time (`dt`), clamped to a max step of 1/30 s so a background-tab hiccup can't teleport the bird. Consistent speed on 60 Hz and 144 Hz monitors.
+- **Pre-rendered Offscreen Sprites**: All pixel art is generated once into offscreen canvases — the bird's 3 wing frames from string-map pixel grids with a named color palette, pipe body/cap as column-banded strips (the body is a thin strip stretched vertically at draw time), the ground tile, and the two full background variants. Per-frame work is pure `drawImage`/pattern fills; nothing is procedurally redrawn per frame.
+- **Seamless Pattern Scrolling**: The scrolling background and ground are drawn as repeating `createPattern` fills with a translate offset — a single fill can't show the hairline seams that image-butting produces at fractional canvas scales.
+- **Invisible Score Triggers**: When the bird's X passes a pipe's right edge, the score increments once (per-pipe `scored` flag) and the ding plays.
+- **Object Pooling**: The 4 pipe pairs are recycled — a pipe exiting the left edge moves back to the right with freshly rolled gap size/position, so no allocation or GC churn during play.
+
+## 🧪 Testing & Debug Hook
+
+- **Debug Hook**: `window.__flappy` exposes read-only game internals (state, score, bird position, pipe positions/gaps, night-cycle phase, audio state, and the difficulty ramp functions) for automated verification. It performs no writes — gameplay cannot be affected by it.
+- **Automated Verification**: development is verified with Playwright autopilots that actually play the game — navigating pipes to score, deliberately crashing to assert the impact-physics trajectory (knockback, bounce, settle), measuring empirical scroll speed against the difficulty config, capturing an AnalyserNode peak to prove audible output on both Chromium and WebKit, and pixel-scanning sky rows for rendering seams.

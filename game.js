@@ -18,13 +18,23 @@ const GRAVITY      = 1700;           // px/s^2
 const FLAP_VY      = -380;           // px/s impulse
 const MAX_VY       = 650;            // terminal fall speed
 
-const PIPE_SPEED   = 225;            // px/s leftward
 const PIPE_W       = 70;
-const GAP_START    = 160;            // vertical opening at score 0
-const GAP_MIN      = 132;            // opening never shrinks below this
-const GAP_SHRINK   = 0.8;            // px narrower per point scored
-const PIPE_SPACING = 320;            // horizontal distance between pairs
 const NIGHT_CYCLE  = 40;             // points per full day->night->day cycle
+
+// Progressive difficulty: each knob ramps linearly with the score, from its
+// `start` value (beginning at score `from`) to its `end` cap (at score `to`).
+const DIFFICULTY = {
+  gap:     { start: 160, end: 132, from: 10, to: 60  }, // px vertical opening
+  speed:   { start: 225, end: 300, from: 30, to: 130 }, // px/s scrolling left
+  spacing: { start: 320, end: 260, from: 50, to: 150 }, // px between pipe pairs
+};
+function ramp({ start, end, from, to }, s) {
+  const t = Math.min(1, Math.max(0, (s - from) / (to - from)));
+  return start + (end - start) * t;
+}
+const gapFor     = s => ramp(DIFFICULTY.gap, s);
+const speedFor   = s => ramp(DIFFICULTY.speed, s);
+const spacingFor = s => ramp(DIFFICULTY.spacing, s);
 const PIPE_COUNT   = 4;              // pooled pipe pairs
 const GAP_MARGIN   = 70;             // min distance of gap center from top/ground
 
@@ -428,7 +438,7 @@ let paused = false;
 
 const bird = { x: birdX, y: 0, vy: 0, vx: 0, rot: 0, spin: 0, frame: 0 };
 const pipes = []; // { x, gapY, scored }
-for (let i = 0; i < PIPE_COUNT; i++) pipes.push({ x: 0, gapY: 0, gap: GAP_START, scored: false });
+for (let i = 0; i < PIPE_COUNT; i++) pipes.push({ x: 0, gapY: 0, gap: DIFFICULTY.gap.start, scored: false });
 
 let score = 0;
 let best = Number(localStorage.getItem(BEST_KEY)) || 0;
@@ -442,9 +452,6 @@ let shakeT = 0;      // screen shake timer
 const SHAKE_DUR = 0.4;
 let nightT = 0;      // 0 = day, 1 = night; follows the score cycle smoothly
 
-// difficulty ramp: the opening narrows slightly with each point
-const gapFor = s => Math.max(GAP_MIN, GAP_START - s * GAP_SHRINK);
-
 function randomGapY(gap) {
   const min = gap / 2 + GAP_MARGIN;
   const max = GROUND_Y - gap / 2 - GAP_MARGIN;
@@ -453,7 +460,7 @@ function randomGapY(gap) {
 
 function resetPipes() {
   pipes.forEach((p, i) => {
-    p.x = W + 150 + i * PIPE_SPACING;
+    p.x = W + 150 + i * spacingFor(0);
     p.gap = gapFor(0);
     p.gapY = randomGapY(p.gap);
     p.scored = false;
@@ -518,10 +525,10 @@ function gameOver() {
 }
 
 function medalFor(s) {
-  if (s >= 60) return { label: 'PLATINUM', color: '#e3e6ea', shine: '#ffffff' };
-  if (s >= 40) return { label: 'GOLD',     color: '#f8d838', shine: '#fdf2a8' };
-  if (s >= 25) return { label: 'SILVER',   color: '#c9cdd4', shine: '#eef0f4' };
-  if (s >= 10) return { label: 'BRONZE',   color: '#cd8b52', shine: '#e8b98a' };
+  if (s >= 150) return { label: 'PLATINUM', color: '#e3e6ea', shine: '#ffffff' };
+  if (s >= 100) return { label: 'GOLD',     color: '#f8d838', shine: '#fdf2a8' };
+  if (s >= 50)  return { label: 'SILVER',   color: '#c9cdd4', shine: '#eef0f4' };
+  if (s >= 25)  return { label: 'BRONZE',   color: '#cd8b52', shine: '#e8b98a' };
   return null;
 }
 
@@ -542,9 +549,10 @@ function update(dt) {
   const targetNight = (1 - Math.cos((score % NIGHT_CYCLE) / NIGHT_CYCLE * Math.PI * 2)) / 2;
   nightT += (targetNight - nightT) * Math.min(1, dt * 1.5);
 
+  const scrollSpeed = speedFor(score); // ramps with score; base speed on menus (score 0)
   const scrolling = state === STATE.TITLE || state === STATE.READY || state === STATE.PLAY;
   if (scrolling) {
-    groundX = (groundX - PIPE_SPEED * dt) % groundTile.width;
+    groundX = (groundX - scrollSpeed * dt) % groundTile.width;
     bgX = (bgX - BG_SPEED * dt) % W;
   }
 
@@ -601,13 +609,13 @@ function update(dt) {
 
   if (state === STATE.PLAY) {
     for (const p of pipes) {
-      p.x -= PIPE_SPEED * dt;
+      p.x -= scrollSpeed * dt;
 
       // recycle pipe that left the screen (object pooling);
       // it captures the current difficulty's gap for its next pass
       if (p.x + PIPE_W < -CAP_OVER) {
         const maxX = Math.max(...pipes.map(q => q.x));
-        p.x = maxX + PIPE_SPACING;
+        p.x = maxX + spacingFor(score);
         p.gap = gapFor(score);
         p.gapY = randomGapY(p.gap);
         p.scored = false;
@@ -827,7 +835,7 @@ function render() {
       ctx.strokeStyle = '#bfae76';
       ctx.lineWidth = 3;
       ctx.stroke();
-      outlinedText('10+ for a medal', px + 62, py + ph / 2 + 34, 11, '#ffffff', { lw: 3 });
+      outlinedText('25+ for a medal', px + 62, py + ph / 2 + 34, 11, '#ffffff', { lw: 3 });
     }
 
     outlinedText('SCORE', px + pw - 100, py + 32, 16, '#f0862c', { lw: 3 });
@@ -983,6 +991,9 @@ window.__flappy = {
   get pipes() { return pipes.map(p => ({ x: p.x, gapY: p.gapY, gap: p.gap })); },
   get nightT() { return nightT; },
   get audioState() { return actx ? actx.state : 'none'; },
+  speedAt: s => speedFor(s),
+  gapAt: s => gapFor(s),
+  spacingAt: s => spacingFor(s),
   get masterGain() { return masterGain; },
 };
 
