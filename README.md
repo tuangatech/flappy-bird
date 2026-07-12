@@ -1,5 +1,7 @@
 # 🐤 Flappy Bird — Faby
 
+**🎮 [Play it now](https://flappy-bird-hanoimail-6658s-projects.vercel.app)** — works on desktop and mobile.
+
 A browser-based Flappy Bird clone built in a weekend. You control **Faby**, a bird who
 constantly moves to the right — tap, click, or hit the space bar to flap through the
 gaps between green pipes. Touch a pipe or the ground and you're knocked out. The game
@@ -8,6 +10,8 @@ is endless; the only goal is a higher score.
 Built with **vanilla JavaScript + HTML5 Canvas** — no frameworks, no build step, no
 image or audio assets. All pixel art is drawn procedurally on canvas and all sound
 effects are synthesized with the Web Audio API.
+
+![Flappy Bird — Faby game screens](docs/screens.png)
 
 See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 
@@ -42,23 +46,10 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 
 ## Run locally
 
-No build step — the quickest way is a tiny local server:
+No build step, no dependencies. The easiest way: **double-click `index.html`**
+(or drag it into a browser) — the game just runs.
 
-```bash
-npx serve .              # then visit http://localhost:3000
-# or
-python3 -m http.server   # then visit http://localhost:8000
-```
-
-Opening `index.html` directly (`file://`) also works in Chrome, **but Safari
-blocks Web Audio on `file://` pages**, so the game runs silently there. Serve
-over HTTP (above) or use the deployed URL to get sound in Safari.
-
-**No sound on iPhone?** The game switches its audio session to *playback* so
-the Ring/Silent switch shouldn't mute it, but if you still hear nothing:
-check the Ring/Silent switch (or Control Center mute), raise the volume
-buttons while the game tab is open, and make sure Focus/Silent mode isn't
-overriding media audio.
+No sound? See [Troubleshooting](#troubleshooting).
 
 ## Project structure
 
@@ -81,6 +72,19 @@ bounce restitution, spin rate) in `die()` and the `DYING` branch of `update()`.
 
 This is a pure static site, so it deploys to Vercel with zero configuration —
 no framework preset, no build command, no output directory.
+
+### Prerequisites
+
+1. **A Vercel account** — the free Hobby plan is enough: [vercel.com/signup](https://vercel.com/signup).
+2. **Log in once from the CLI** (Option A): `vercel login` — it opens the browser to
+   authenticate. (Option B authenticates through the dashboard instead.)
+3. **Make the game public** — new Vercel projects ship with **Deployment Protection
+   (Vercel Authentication) enabled**, so visitors get a Vercel login wall instead of
+   the game. To let anyone play: in the Vercel dashboard go to your project →
+   **Settings → Deployment Protection → Vercel Authentication** and set it to
+   **Disabled** (or scope it to *Only Preview Deployments* if you want preview URLs
+   to stay private while the production URL is public). There's nothing sensitive in
+   a static game, so disabling it is fine.
 
 ### Option A — Vercel CLI (fastest)
 
@@ -140,3 +144,41 @@ pull request gets its own preview URL.
 
 - The best score is stored in the player's browser (`localStorage`), so it survives
   deployments — nothing server-side to configure.
+
+## Troubleshooting
+
+All of these are about sound — the game itself runs everywhere.
+
+**Check the 🔊 icon first** (title and game-over screens):
+
+| Icon | Meaning |
+|---|---|
+| Solid 🔊 | Audio engine is running — if it's still silent, the problem is outside the page (tab mute, volume, silent switch). |
+| Translucent 🔊 | The browser is blocking audio — see the cases below. |
+| 🔇 | Muted in-game — press `M` or click the icon. |
+
+**No sound in Safari on Mac (local file)** — Safari blocks Web Audio on pages
+opened via `file://` (the game shows a small hint under the icon). Chrome
+doesn't have this restriction. Play the deployed URL, or serve the folder over
+a tiny local server:
+
+```bash
+npx serve .              # then visit http://localhost:3000
+# or
+python3 -m http.server   # then visit http://localhost:8000
+```
+
+**No sound on iPhone (Safari or Chrome — both are WebKit)** — the game switches
+its audio session to *playback* so the Ring/Silent switch shouldn't mute it,
+but if you still hear nothing:
+
+1. Tap the screen once (browsers only unlock audio after a user gesture).
+2. Press the volume-up button *while the game tab is open* — media volume is
+   separate from ringer volume.
+3. Check the Ring/Silent switch and Control Center mute.
+4. Make sure a Focus mode isn't silencing media.
+
+**Still silent in desktop Safari (served over HTTP)** — check
+Safari → Settings → Websites → Auto-Play for the site and set
+**"Allow All Auto-Play"**, and look for the tab-mute speaker icon in the
+address bar.
