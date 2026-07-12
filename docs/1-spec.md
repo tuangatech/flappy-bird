@@ -114,6 +114,17 @@ All sound is synthesized at runtime with the Web Audio API — the project ships
 - **Invisible Score Triggers**: When the bird's X passes a pipe's right edge, the score increments once (per-pipe `scored` flag) and the ding plays.
 - **Object Pooling**: The 4 pipe pairs are recycled — a pipe exiting the left edge moves back to the right with freshly rolled gap size/position, so no allocation or GC churn during play.
 
+## 🌍 Global Leaderboard
+
+A minimal global board designed for a small, trusted friend group (< 5 players).
+
+- **Storage**: one Redis sorted set (Upstash via Vercel). `ZADD GT` stores each player's personal best atomically — no read-modify-write races, no per-run rows. A companion hash records the date of each best.
+- **API**: two Vercel serverless functions — `GET /api/run` issues an HMAC-signed timestamp token at run start; `GET /api/leaderboard` returns the top 10; `POST /api/leaderboard` validates and stores `{name, score, token}`.
+- **Plausibility check**: the submit endpoint recomputes the token's signature and derives the run's true wall-clock duration server-side, rejecting scores faster than physics allows (~0.7 s per point + lead-in, from max scroll speed and min pipe spacing) plus an absolute cap. Client-reported timing is never trusted.
+- **Nicknames**: social contract — chosen once via an HTML overlay prompt (native keyboard on mobile), stored in `localStorage`, editable from the board panel. Server sanitizes (trim, strip control chars, 12-char max). Duplicate names share an entry by design.
+- **UI**: a 🏆 button on the title and game-over screens opens a canvas-drawn panel (top 8, own name highlighted, date per entry, loading/offline/empty states, BACK/Esc/click-outside to close). Keyboard input is suppressed while the name field is focused so typing never flaps the bird.
+- **Graceful degradation**: on `file://`, a plain static server, or offline, every fetch failure is caught — the board shows "offline" and gameplay is completely unaffected.
+
 ## 🧪 Testing & Debug Hook
 
 - **Debug Hook**: `window.__flappy` exposes read-only game internals (state, score, bird position, pipe positions/gaps, night-cycle phase, audio state, and the difficulty ramp functions) for automated verification. It performs no writes — gameplay cannot be affected by it.

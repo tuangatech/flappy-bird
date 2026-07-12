@@ -4,6 +4,10 @@
 # Vercel CLI (created by `vercel` deploys, linked to a personal account)
 .vercel/
 
+# environment secrets (Redis tokens etc.) — never commit
+.env*.local
+.env
+
 # Claude Code local settings (personal permissions, not shared)
 .claude/settings.local.json
 

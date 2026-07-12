@@ -35,6 +35,8 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
   best score persisted in `localStorage`
 - ⚙️ Delta-time physics (consistent speed on 60 Hz and 144 Hz monitors) and pipe
   object pooling (no GC stutter)
+- 🌍 Global leaderboard for your friend group — one Redis sorted set behind two
+  Vercel serverless functions, with a run-duration plausibility check (see below)
 
 ## Controls
 
@@ -44,6 +46,7 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 | `P` | Pause / resume (auto-pauses when the window loses focus) |
 | `R` | Restart after game over |
 | `M` / click 🔊 icon | Mute / unmute (remembered in `localStorage`) |
+| 🏆 button | Leaderboard (title & game-over screens); `Esc` closes |
 
 ## Run locally
 
@@ -55,9 +58,13 @@ No sound? See [Troubleshooting](#troubleshooting).
 ## Project structure
 
 ```
-├── index.html       # page shell + canvas
+├── index.html       # page shell + canvas + name-entry overlay
 ├── style.css        # centered dark layout, mobile/touch rules
 ├── game.js          # the entire game (physics, rendering, audio, states)
+├── package.json     # redis client for the API functions (game itself has no deps)
+├── api/
+│   ├── run.js           # GET: signed run-start token (for the plausibility check)
+│   └── leaderboard.js   # GET: top 10 · POST: submit a score
 └── docs/
     ├── 1-spec.md    # game specification
     └── flappy-bird-screens.jpg  # original game reference screens
@@ -145,6 +152,38 @@ pull request gets its own preview URL.
 
 - The best score is stored in the player's browser (`localStorage`), so it survives
   deployments — nothing server-side to configure.
+
+## Global leaderboard
+
+A tiny global board for a small friend group. Each player's **personal best** is
+kept in one Redis sorted set; two serverless functions serve it.
+
+**How it works**
+
+- On game over (score ≥ 1) the game submits your best under your nickname. You're
+  asked for a name once (stored in `localStorage`); change it any time via the 🏆
+  panel → "tap to change".
+- Names are **honor system** — whoever submits under a name shares that entry, so
+  agree on names in the group chat.
+- **Plausibility check**: when a run starts, the game fetches a signed timestamp
+  token (`GET /api/run`). On submit, the server derives the run's true wall-clock
+  duration from it and rejects scores that are physically impossible for that time
+  (based on max pipe rate) — enough to stop casual `curl` pranks.
+- Offline / local file: everything degrades gracefully — the board shows "offline"
+  and the game is unaffected.
+
+**Setup (one-time)**
+
+1. In the Vercel dashboard: **Marketplace → Upstash (Redis)** → create a free
+   database and connect it to the project. This injects the
+   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` env vars (the legacy
+   `KV_REST_API_*` names also work).
+2. Optionally add an `LB_SECRET` env var (any random string) to sign run tokens —
+   otherwise the Redis token doubles as the signing secret.
+3. Redeploy. Done — no schema, no migrations.
+
+To test the API locally, use `vercel dev` (after `vercel env pull`); a plain
+static server serves the game fine but the board will just show "offline".
 
 ## Troubleshooting
 

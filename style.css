@@ -44,6 +44,78 @@ main {
   letter-spacing: 0.03em;
 }
 
+#nick-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 28, 44, 0.7);
+  z-index: 10;
+}
+
+#nick-overlay[hidden] {
+  display: none;
+}
+
+.nick-box {
+  background: #e6d8a8;
+  border: 3px solid #543847;
+  border-radius: 10px;
+  box-shadow: 0 6px 0 #543847;
+  padding: 22px 26px;
+  width: min(320px, calc(100vw - 48px));
+  text-align: center;
+}
+
+.nick-box h2 {
+  color: #543847;
+  font-size: 17px;
+  margin-bottom: 14px;
+}
+
+#nick-input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 18px;
+  text-align: center;
+  color: #543847;
+  background: #fff;
+  border: 3px solid #543847;
+  border-radius: 8px;
+  outline: none;
+}
+
+.nick-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.nick-actions button {
+  flex: 1;
+  padding: 10px 0;
+  font: inherit;
+  font-weight: bold;
+  font-size: 15px;
+  border: 3px solid #543847;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #fff;
+  background: #f0862c;
+  box-shadow: 0 4px 0 #543847;
+}
+
+.nick-actions #nick-skip {
+  background: #9a8f6c;
+}
+
+.nick-actions button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #543847;
+}
+
 /* touch devices: controls are on-screen, no keyboard hint needed */
 @media (pointer: coarse) {
   .hint {

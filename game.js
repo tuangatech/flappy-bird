@@ -544,6 +544,7 @@ function goReady() {
 
 function startPlay() {
   state = STATE.PLAY;
+  runTokenPromise = api.startRun(); // timestamps the run for the leaderboard
   flap();
 }
 
@@ -587,7 +588,107 @@ function gameOver() {
     newBest = true;
     localStorage.setItem(BEST_KEY, String(best));
   }
+  maybeSubmit(score); // fire-and-forget; never blocks the game
   sfx.swoosh();
+}
+
+/* ---------------- Global leaderboard ---------------- */
+const NICK_KEY = 'flappy.nick';
+let nick = localStorage.getItem(NICK_KEY) || '';
+let runTokenPromise = null; // fetched at run start, awaited at submit
+let board = null;           // cached [{ name, score, at }]
+let boardStatus = 'idle';   // idle | loading | ready | error
+let boardOpen = false;
+let askedNick = false;      // don't re-prompt within a session after a skip
+const boardRects = { back: null, name: null }; // hit areas, set during draw
+
+const API_AVAILABLE = location.protocol !== 'file:'; // no functions without a server
+
+const api = {
+  async startRun() {
+    if (!API_AVAILABLE) return null;
+    try {
+      const r = await fetch('api/run');
+      return r.ok ? (await r.json()).token : null;
+    } catch (e) { return null; }
+  },
+  async top() {
+    if (!API_AVAILABLE) throw new Error('unavailable');
+    const r = await fetch('api/leaderboard');
+    if (!r.ok) throw new Error('unavailable');
+    return (await r.json()).board || [];
+  },
+  async submit(name, s, token) {
+    try {
+      await fetch('api/leaderboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, score: s, token }),
+      });
+    } catch (e) { /* offline: the run just doesn't make the board */ }
+  },
+};
+
+function promptNick() {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('nick-overlay');
+    const input = document.getElementById('nick-input');
+    const ok = document.getElementById('nick-ok');
+    const skip = document.getElementById('nick-skip');
+    input.value = nick;
+    overlay.hidden = false;
+    setTimeout(() => input.focus(), 30);
+    const finish = save => {
+      overlay.hidden = true;
+      ok.removeEventListener('click', onOk);
+      skip.removeEventListener('click', onSkip);
+      input.removeEventListener('keydown', onKey);
+      resolve(save ? input.value.trim().slice(0, 12) : null);
+    };
+    const onOk = () => finish(true);
+    const onSkip = () => finish(false);
+    const onKey = e => {
+      e.stopPropagation(); // typing must never flap the bird
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') finish(false);
+    };
+    ok.addEventListener('click', onOk);
+    skip.addEventListener('click', onSkip);
+    input.addEventListener('keydown', onKey);
+  });
+}
+
+async function changeNick() {
+  const n = await promptNick();
+  if (n === null) return; // cancelled
+  nick = n;
+  if (nick) localStorage.setItem(NICK_KEY, nick);
+  else localStorage.removeItem(NICK_KEY);
+}
+
+async function maybeSubmit(finalScore) {
+  if (finalScore <= 0) return;
+  const token = runTokenPromise ? await runTokenPromise : null;
+  if (!token) return; // API unreachable (file://, local static server, offline)
+  if (!nick && !askedNick) {
+    askedNick = true;
+    await changeNick();
+  }
+  if (!nick) return;
+  await api.submit(nick, finalScore, token);
+  board = null; // refetch next time the panel opens
+}
+
+function openBoard() {
+  boardOpen = true;
+  if (!board) {
+    boardStatus = 'loading';
+    api.top()
+      .then(b => { board = b; boardStatus = 'ready'; })
+      .catch(() => { boardStatus = 'error'; });
+  } else {
+    boardStatus = 'ready';
+  }
 }
 
 function medalFor(s) {
@@ -756,7 +857,7 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawButton(btn, label) {
+function drawButton(btn, label, emoji) {
   roundRect(btn.x, btn.y + 4, btn.w, btn.h, 8);
   ctx.fillStyle = OUTLINE;
   ctx.fill();
@@ -769,12 +870,23 @@ function drawButton(btn, label) {
   roundRect(btn.x + 4, btn.y + 4, btn.w - 8, btn.h / 3, 6);
   ctx.fillStyle = 'rgba(255,255,255,0.28)';
   ctx.fill();
-  outlinedText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1, 22, '#ffffff', { lw: 4 });
+  if (emoji) {
+    // emoji labels look wrong with an outline stroke — plain fill only
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
+  } else {
+    outlinedText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1, 22, '#ffffff', { lw: 4 });
+  }
 }
 
 // x is a getter so the buttons stay centered when W changes on resize
 const startBtn = { get x() { return W / 2 - 80; }, y: 424, w: 160, h: 52 };
 const againBtn = { get x() { return W / 2 - 95; }, y: 412, w: 190, h: 52 };
+// trophy buttons sit just right of the main button on each screen
+const titleBoardBtn = { get x() { return W / 2 + 92; }, y: 424, w: 52, h: 52 };
+const overBoardBtn = { get x() { return W / 2 + 107; }, y: 412, w: 52, h: 52 };
 
 function inBtn(btn, x, y) {
   return x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h;
@@ -866,6 +978,7 @@ function render() {
     fancyTitleText('Flappy Bird', W / 2, 150, 64 * us, '#8ed94e');
     outlinedText('meet Faby the bird', W / 2, 210, 18 * us, '#ffffff', { lw: 4 });
     drawButton(startBtn, 'START');
+    drawButton(titleBoardBtn, '🏆', true);
     ctx.fillStyle = 'rgba(84,56,71,0.85)';
     ctx.font = '13px "Trebuchet MS", sans-serif';
     ctx.textAlign = 'center';
@@ -939,9 +1052,12 @@ function render() {
 
     if (ease >= 1) {
       drawButton(againBtn, 'TRY AGAIN');
+      drawButton(overBoardBtn, '🏆', true);
       if (!IS_TOUCH) outlinedText('or press R', W / 2, 495, 14, '#ffffff', { lw: 3 });
     }
   }
+
+  if (boardOpen) drawBoardPanel();
 
   if (paused && state === STATE.PLAY) {
     ctx.fillStyle = 'rgba(26,28,44,0.55)';
@@ -979,9 +1095,81 @@ function render() {
   }
 }
 
+function drawBoardPanel() {
+  ctx.fillStyle = 'rgba(26,28,44,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  const pw = Math.min(W - 32, 380);
+  const ph = 410;
+  const px = W / 2 - pw / 2;
+  const py = 62;
+  roundRect(px, py + 4, pw, ph, 10);
+  ctx.fillStyle = OUTLINE;
+  ctx.fill();
+  roundRect(px, py, pw, ph, 10);
+  ctx.fillStyle = '#e6d8a8';
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  outlinedText('🏆 LEADERBOARD', W / 2, py + 32, 22, '#ffffff', { lw: 4 });
+
+  if (boardStatus === 'loading') {
+    outlinedText('loading…', W / 2, py + ph / 2, 16, '#ffffff', { lw: 3 });
+  } else if (boardStatus === 'error') {
+    outlinedText('offline — play the deployed link', W / 2, py + ph / 2, 14, '#ffffff', { lw: 3 });
+  } else if (board && board.length === 0) {
+    outlinedText('no scores yet — be first!', W / 2, py + ph / 2, 15, '#ffffff', { lw: 3 });
+  } else if (board) {
+    const rowH = 30;
+    board.slice(0, 8).forEach((row, i) => {
+      const y = py + 72 + i * rowH;
+      const mine = nick && row.name === nick;
+      ctx.font = `bold 15px 'Trebuchet MS', sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = mine ? '#e4442a' : '#543847';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${i + 1}.`, px + 26, y);
+      ctx.fillText(row.name, px + 56, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(String(row.score), px + pw - 60, y);
+      if (row.at) {
+        ctx.fillStyle = 'rgba(84,56,71,0.5)';
+        ctx.font = `11px 'Trebuchet MS', sans-serif`;
+        ctx.fillText(row.at.slice(5), px + pw - 20, y); // MM-DD
+      }
+    });
+  }
+
+  // "playing as" footer (click to change name)
+  boardRects.name = { x: px + 20, y: py + ph - 92, w: pw - 40, h: 24 };
+  ctx.font = `13px 'Trebuchet MS', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(84,56,71,0.8)';
+  ctx.fillText(
+    nick ? `playing as ${nick} — tap to change` : 'tap here to set your name',
+    W / 2, boardRects.name.y + 12
+  );
+
+  boardRects.back = { x: W / 2 - 70, y: py + ph - 60, w: 140, h: 42 };
+  drawButton(boardRects.back, 'BACK');
+}
+
 /* ---------------- Input ---------------- */
 function press(x, y) {
   audioCtx(); // unlock audio on first gesture
+
+  if (boardOpen) {
+    if (x !== null && boardRects.name && inBtn(boardRects.name, x, y)) {
+      changeNick();
+      return;
+    }
+    boardOpen = false; // BACK, space, or any other click closes
+    return;
+  }
+
   // sound icon (top-right corner) toggles mute — only where it's drawn,
   // so a tap near the corner during play still flaps
   if ((state === STATE.TITLE || state === STATE.OVER) &&
@@ -991,6 +1179,7 @@ function press(x, y) {
   }
   switch (state) {
     case STATE.TITLE:
+      if (x !== null && inBtn(titleBoardBtn, x, y)) { openBoard(); break; }
       if (x === null || inBtn(startBtn, x, y)) goReady();
       break;
     case STATE.READY:
@@ -1000,6 +1189,7 @@ function press(x, y) {
       if (!paused) flap();
       break;
     case STATE.OVER:
+      if (x !== null && inBtn(overBoardBtn, x, y)) { openBoard(); break; }
       if (x !== null ? inBtn(againBtn, x, y) : time - overAt > 0.5) goReady();
       break;
   }
@@ -1012,6 +1202,11 @@ canvas.addEventListener('pointerdown', e => {
 });
 
 document.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement) return; // typing a name, not playing
+  if (e.code === 'Escape' && boardOpen) {
+    boardOpen = false;
+    return;
+  }
   if (e.code === 'Space') {
     e.preventDefault();
     if (!e.repeat) press(null, null);
