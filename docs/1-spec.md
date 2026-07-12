@@ -44,10 +44,12 @@ Every difficulty knob ramps **linearly with the score** from a `start` value (ra
 | Knob | Start value | End value (cap) | Ramp begins | Cap reached |
 |---|---|---|---|---|
 | Vertical pipe gap | 160 px | 132 px | score 10 | score 60 |
-| Scroll speed | 225 px/s | 300 px/s | score 30 | score 130 |
+| Scroll speed | 225 px/s | 350 px/s | score 30 | score 130 |
 | Pipe spacing (horizontal) | 320 px | 260 px | score 50 | score 150 |
+| Pipe vertical sway (wobble) | 0 px | ±36 px | score 120 | score 170 |
 
-- **Staggered onset**: the gap starts tightening at 10, speed starts rising at 30, and spacing starts closing at 50 — difficulty arrives in layers rather than all at once, and each new ramp reads as a milestone. Everything is at full difficulty by score 150.
+- **Staggered onset**: the gap starts tightening at 10, speed starts rising at 30, spacing starts closing at 50, and past 120 the pipes themselves begin to sway vertically (sine motion, random phase per pipe) — difficulty arrives in layers rather than all at once, and each new ramp reads as a milestone. Everything is at full difficulty by score 170.
+- **Moving pipes**: each pipe's sway amplitude is captured at spawn and its base position is placed so the gap can never sway into the ceiling or ground. Collision tracks the moving gap in real time.
 - **Per-pipe capture**: each pipe captures the current gap and spacing when it spawns/recycles, so pipes already on screen never visibly change; speed applies globally (ground scroll matches pipe speed).
 - **Constant**: gravity and flap impulse never change — the bird always handles the same; only the world gets harder.
 
@@ -70,7 +72,10 @@ Impacts should feel physical rather than scripted — the bird reacts to *what* 
   - **White flash** overlay (~0.12 s) on the killing hit.
   - **Screen shake**: ~8 px amplitude decaying over ~0.4 s on impact, with a smaller shake on the ground bounce.
   - **Audio**: noise-burst "smack" + descending sweep on the pipe hit, low sine "thud" on the ground bounce.
-- **Death Sequence Timeline**: smack → flash + shake → recoil off the pipe → tumble nose-down while drifting backward → thud into the dirt → small bounce → settle → Game Over panel slides in.
+- **Feather & Dust Particles**: a few feathers shake loose on every flap; a pipe hit bursts ~14 feathers; ground impacts kick up a tan dust puff. Particles are pixel squares with gravity, a slight leftward world-drift, a dampened bounce off the dirt, and alpha fade-out.
+- **Squash & Stretch**: the sprite compresses (wide + short) for a beat on each flap and stretches (narrow + long) during fast falls — classic animation-principle feedback layered on top of the tilt rotation.
+- **Near-Miss Whoosh**: clearing a pipe with less than ~14 px to spare plays a soft wind whoosh under the score ding, acknowledging skilled (or lucky) play.
+- **Death Sequence Timeline**: smack → flash + shake → feather burst → recoil off the pipe → tumble nose-down while drifting backward → thud + dust puff into the dirt → small bounce → settle → Game Over panel slides in.
 
 ## 🎨 UI & Game States
 

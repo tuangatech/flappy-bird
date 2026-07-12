@@ -20,11 +20,12 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 - 🎨 Procedural pixel art — Faby, pipes, ground, clouds, and skyline, all drawn in code
 - 🔊 Web Audio sound effects — flap, score ding, hit smack, ground thud
 - 💥 Physical impact effects — knockback recoil off pipes, tumble rotation, dampened
-  ground bounce, screen shake, white flash
+  ground bounce, screen shake, white flash, feather bursts and dust puffs, squash &
+  stretch, and a near-miss whoosh when you graze a pipe
 - 📈 Progressive difficulty — the pipe gap tightens (160 → 132 px between scores 10
-  and 60), scroll speed rises (225 → 300 px/s between scores 30 and 130), and pipe
-  spacing shrinks (320 → 260 px between scores 50 and 150); all tunable via the
-  `DIFFICULTY` config
+  and 60), scroll speed rises (225 → 350 px/s between scores 30 and 130), pipe
+  spacing shrinks (320 → 260 px between scores 50 and 150), and past 120 the pipes
+  start swaying vertically (up to ±36 px); all tunable via the `DIFFICULTY` config
 - 🌙 Day → night cycle — the sky crossfades to a starry night as your score climbs,
   cycling back to day every 40 points
 - 📱 Adaptive screen — portrait phones get the original tall view (~1 pipe visible),

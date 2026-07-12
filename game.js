@@ -24,9 +24,10 @@ const NIGHT_CYCLE  = 40;             // points per full day->night->day cycle
 // Progressive difficulty: each knob ramps linearly with the score, from its
 // `start` value (beginning at score `from`) to its `end` cap (at score `to`).
 const DIFFICULTY = {
-  gap:     { start: 160, end: 132, from: 10, to: 60  }, // px vertical opening
-  speed:   { start: 225, end: 300, from: 30, to: 130 }, // px/s scrolling left
-  spacing: { start: 320, end: 260, from: 50, to: 150 }, // px between pipe pairs
+  gap:     { start: 160, end: 132, from: 10,  to: 60  }, // px vertical opening
+  speed:   { start: 225, end: 350, from: 30,  to: 130 }, // px/s scrolling left
+  spacing: { start: 320, end: 260, from: 50,  to: 150 }, // px between pipe pairs
+  wobble:  { start: 0,   end: 36,  from: 120, to: 170 }, // px pipe vertical sway
 };
 function ramp({ start, end, from, to }, s) {
   const t = Math.min(1, Math.max(0, (s - from) / (to - from)));
@@ -35,6 +36,7 @@ function ramp({ start, end, from, to }, s) {
 const gapFor     = s => ramp(DIFFICULTY.gap, s);
 const speedFor   = s => ramp(DIFFICULTY.speed, s);
 const spacingFor = s => ramp(DIFFICULTY.spacing, s);
+const wobbleFor  = s => ramp(DIFFICULTY.wobble, s);
 const PIPE_COUNT   = 4;              // pooled pipe pairs
 const GAP_MARGIN   = 70;             // min distance of gap center from top/ground
 
@@ -429,16 +431,65 @@ const sfx = {
   die()   { tone({ type: 'sawtooth', from: 380, to: 70, dur: 0.45, vol: 0.28, delay: 0.15 }); },
   thud()  { tone({ type: 'sine', from: 130, to: 55, dur: 0.12, vol: 0.3 }); },
   swoosh() { noise({ dur: 0.2, vol: 0.18 }); },
+  nearMiss() { noise({ dur: 0.3, vol: 0.28 }); }, // soft whoosh for grazing a pipe
 };
+
+/* ---------------- Particles (feathers & dust) ---------------- */
+const particles = []; // { x, y, vx, vy, size, color, life, maxLife, gravity }
+
+function spawnParticles(n, { x, y, colors, speed, up = 0, gravity = 400, life = 0.6, size = 4 }) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = speed * (0.4 + Math.random() * 0.6);
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * v - 30,          // slight leftward drift with the world
+      vy: Math.sin(a) * v - up,
+      size: size * (0.6 + Math.random() * 0.8),
+      color: colors[(Math.random() * colors.length) | 0],
+      life: life * (0.6 + Math.random() * 0.8),
+      maxLife: life,
+      gravity,
+    });
+  }
+}
+
+const featherBurst = (x, y, n, speed) =>
+  spawnParticles(n, { x, y, colors: ['#f8c435', '#fbe38a', '#ffffff'], speed, gravity: 350, life: 0.7 });
+const dustPuff = (x, y) =>
+  spawnParticles(10, { x, y, colors: ['#d8cf9a', '#cbc37e', '#f0ebb8'], speed: 90, up: 90, gravity: 500, life: 0.5, size: 5 });
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.vy += p.gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.y > GROUND_Y - 2) { p.y = GROUND_Y - 2; p.vy *= -0.4; } // settle on the dirt
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.min(1, p.life / (p.maxLife * 0.5));
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
 
 /* ---------------- Game state ---------------- */
 const STATE = { TITLE: 0, READY: 1, PLAY: 2, DYING: 3, OVER: 4 };
 let state = STATE.TITLE;
 let paused = false;
 
-const bird = { x: birdX, y: 0, vy: 0, vx: 0, rot: 0, spin: 0, frame: 0 };
+const bird = { x: birdX, y: 0, vy: 0, vx: 0, rot: 0, spin: 0, frame: 0, flapT: 0 };
 const pipes = []; // { x, gapY, scored }
-for (let i = 0; i < PIPE_COUNT; i++) pipes.push({ x: 0, gapY: 0, gap: DIFFICULTY.gap.start, scored: false });
+for (let i = 0; i < PIPE_COUNT; i++) {
+  pipes.push({ x: 0, gapY: 0, baseY: 0, gap: DIFFICULTY.gap.start, amp: 0, phase: 0, scored: false });
+}
 
 let score = 0;
 let best = Number(localStorage.getItem(BEST_KEY)) || 0;
@@ -458,12 +509,20 @@ function randomGapY(gap) {
   return min + Math.random() * (max - min);
 }
 
+function rollPipe(p, s) {
+  p.gap = gapFor(s);
+  p.amp = wobbleFor(s); // vertical sway amplitude (0 until score 100)
+  p.phase = Math.random() * Math.PI * 2;
+  // reserve the sway range so the gap never wobbles into the ceiling/ground
+  p.baseY = randomGapY(p.gap + 2 * p.amp);
+  p.gapY = p.baseY;
+  p.scored = false;
+}
+
 function resetPipes() {
   pipes.forEach((p, i) => {
     p.x = W + 150 + i * spacingFor(0);
-    p.gap = gapFor(0);
-    p.gapY = randomGapY(p.gap);
-    p.scored = false;
+    rollPipe(p, 0);
   });
 }
 
@@ -477,6 +536,8 @@ function goReady() {
   bird.vx = 0;
   bird.rot = 0;
   bird.spin = 0;
+  bird.flapT = 0;
+  particles.length = 0;
   resetPipes();
   sfx.swoosh();
 }
@@ -489,6 +550,8 @@ function startPlay() {
 function flap() {
   bird.vy = FLAP_VY;
   bird.rot = -0.35;
+  bird.flapT = 1; // drives the squash pose, decays in update()
+  featherBurst(bird.x - 12, bird.y + 10, 3, 70); // a few feathers shake loose
   sfx.flap();
 }
 
@@ -504,12 +567,15 @@ function die(hitPipe) {
     bird.vx = -170;
     bird.vy = bird.vy < 0 ? 120 : -210;
     bird.spin = 3.5;
+    featherBurst(bird.x + 10, bird.y, 14, 180); // feathers everywhere
     sfx.die();
   } else {
     // slammed into the ground: dampened bounce before settling
     bird.vy = -Math.max(bird.vy, 300) * 0.35;
     bird.vx = -60;
     bird.spin = 3;
+    featherBurst(bird.x, bird.y, 8, 130);
+    dustPuff(bird.x, GROUND_Y);
   }
 }
 
@@ -544,6 +610,8 @@ function update(dt) {
   time += dt;
   if (flashT > 0) flashT -= dt;
   if (shakeT > 0) shakeT -= dt;
+  bird.flapT = Math.max(0, bird.flapT - dt * 6);
+  updateParticles(dt);
 
   // day -> night -> day, one full cycle every NIGHT_CYCLE points
   const targetNight = (1 - Math.cos((score % NIGHT_CYCLE) / NIGHT_CYCLE * Math.PI * 2)) / 2;
@@ -599,6 +667,7 @@ function update(dt) {
         bird.vx *= 0.5;
         bird.spin *= 0.4;
         shakeT = Math.max(shakeT, 0.15);
+        dustPuff(bird.x, GROUND_Y);
         sfx.thud();
       } else {
         gameOver();
@@ -612,19 +681,26 @@ function update(dt) {
       p.x -= scrollSpeed * dt;
 
       // recycle pipe that left the screen (object pooling);
-      // it captures the current difficulty's gap for its next pass
+      // it captures the current difficulty's gap/wobble for its next pass
       if (p.x + PIPE_W < -CAP_OVER) {
         const maxX = Math.max(...pipes.map(q => q.x));
         p.x = maxX + spacingFor(score);
-        p.gap = gapFor(score);
-        p.gapY = randomGapY(p.gap);
-        p.scored = false;
+        rollPipe(p, score);
       }
+
+      // high-score pipes sway vertically around their base position
+      if (p.amp > 0) p.gapY = p.baseY + Math.sin(time * 1.8 + p.phase) * p.amp;
 
       // scoring: bird passed the pipe's right edge
       if (!p.scored && p.x + PIPE_W < bird.x) {
         p.scored = true;
         score++;
+        // grazed the pipe by a few pixels? acknowledge the style
+        const clearance = Math.min(
+          bird.y - (p.gapY - p.gap / 2),
+          (p.gapY + p.gap / 2) - bird.y
+        ) - BIRD_R;
+        if (clearance < 14) sfx.nearMiss();
         sfx.point();
       }
 
@@ -707,9 +783,15 @@ function inBtn(btn, x, y) {
 function drawBird() {
   const seq = [0, 1, 2, 1]; // wing up, mid, down, mid
   const frame = birdFrames[seq[bird.frame]];
+  // squash on flap (wide + short), stretch on a fast fall (narrow + long)
+  const squash = bird.flapT;
+  const stretch = Math.max(0, (bird.vy - 250) / (MAX_VY - 250));
+  const sx = 1 + 0.16 * squash - 0.10 * stretch;
+  const sy = 1 - 0.20 * squash + 0.16 * stretch;
   ctx.save();
   ctx.translate(bird.x, bird.y);
   ctx.rotate(bird.rot);
+  ctx.scale(sx, sy);
   ctx.drawImage(frame, -BIRD_W / 2, -BIRD_H / 2);
   ctx.restore();
 }
@@ -776,6 +858,7 @@ function render() {
 
   drawGround();
   drawBird();
+  drawParticles();
 
   const us = uiScale();
 
