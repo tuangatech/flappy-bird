@@ -45,11 +45,16 @@ Every difficulty knob ramps **linearly with the score** from a `start` value (ra
 |---|---|---|---|---|
 | Vertical pipe gap | 160 px | 132 px | score 10 | score 60 |
 | Scroll speed | 225 px/s | 350 px/s | score 30 | score 130 |
-| Pipe spacing (horizontal) | 320 px | 260 px | score 50 | score 150 |
+| Pipe spacing (horizontal) | 320 px | 220 px | score 50 | score 150 |
 | Pipe vertical sway (wobble) | 0 px | ±36 px | score 120 | score 170 |
+| Gap step: forced minimum | 0 px | 24 px | score 80 | score 150 |
+| Gap step: max rise | 70 px | 65 px | score 0 | score 150 |
+| Gap step: max fall | 70 px | 110 px | score 50 | score 150 |
 
 - **Staggered onset**: the gap starts tightening at 10, speed starts rising at 30, spacing starts closing at 50, and past 120 the pipes themselves begin to sway vertically (sine motion, random phase per pipe) — difficulty arrives in layers rather than all at once, and each new ramp reads as a milestone. Everything is at full difficulty by score 170.
 - **Moving pipes**: each pipe's sway amplitude is captured at spawn and its base position is placed so the gap can never sway into the ceiling or ground. Collision tracks the moving gap in real time.
+- **Course shaping (gap steps)**: each new gap's position is sampled as a *step* from the previous gap, not an absolute position. Early game draws gentle steps (0–70 px); from score 80 a **forced minimum step** ramps in (24 px by 150) so gaps never align — every late pipe demands a move. Steps are **asymmetric**: dives grow to 110 px while climbs cap near 65 px, matching the bird's physics envelope. When the course reaches the ceiling/floor, the step direction bounces.
+- **Reachability guarantee**: independent of the configured step ranges, every rise is capped by what the bird can physically climb in the time between pipes — max climb ≈ 260 px/s (flap-spamming), max dive ≈ 500 px/s, computed from the *current* spacing and speed with worst-case wobble subtracted. No layout is ever unwinnable.
 - **Per-pipe capture**: each pipe captures the current gap and spacing when it spawns/recycles, so pipes already on screen never visibly change; speed applies globally (ground scroll matches pipe speed).
 - **Constant**: gravity and flap impulse never change — the bird always handles the same; only the world gets harder.
 
@@ -96,7 +101,7 @@ Follow the look and feel of the original game screens in [flappy-bird-screens.jp
 
 All sound is synthesized at runtime with the Web Audio API — the project ships zero audio files.
 
-- **Sound Set**: flap (sine sweep down, a wing "swoosh"), score (two-tone square ding), hit (low-pass filtered noise burst + low square drop), die (descending sawtooth sweep), ground thud (low sine drop), and a transition swoosh between screens.
+- **Sound Set**: flap (sine sweep down, a wing "swoosh"), score ding (two-tone square — plays on every **10th** pipe as a milestone reward rather than on every pass), near-miss whoosh, hit (low-pass filtered noise burst + low square drop), die (descending sawtooth sweep), ground thud (low sine drop), and a transition swoosh between screens.
 - **Mixing**: every voice routes through a single master `GainNode` — one place to mute or set volume.
 - **Autoplay/Unlock Strategy** (hard-won, browser-specific):
   - The `AudioContext` is created and `resume()`d **inside user-gesture handlers** (`pointerdown`, `mousedown`, `touchend`, `keydown`), retrying on every gesture until the context reports `running`.
@@ -111,7 +116,7 @@ All sound is synthesized at runtime with the Web Audio API — the project ships
 - **Delta Time Physics**: Bird movement and pipe scrolling are tied to frame delta time (`dt`), clamped to a max step of 1/30 s so a background-tab hiccup can't teleport the bird. Consistent speed on 60 Hz and 144 Hz monitors.
 - **Pre-rendered Offscreen Sprites**: All pixel art is generated once into offscreen canvases — the bird's 3 wing frames from string-map pixel grids with a named color palette, pipe body/cap as column-banded strips (the body is a thin strip stretched vertically at draw time), the ground tile, and the two full background variants. Per-frame work is pure `drawImage`/pattern fills; nothing is procedurally redrawn per frame.
 - **Seamless Pattern Scrolling**: The scrolling background and ground are drawn as repeating `createPattern` fills with a translate offset — a single fill can't show the hairline seams that image-butting produces at fractional canvas scales.
-- **Invisible Score Triggers**: When the bird's X passes a pipe's right edge, the score increments once (per-pipe `scored` flag) and the ding plays.
+- **Invisible Score Triggers**: When the bird's X passes a pipe's right edge, the score increments once (per-pipe `scored` flag); the milestone ding plays on every 10th point.
 - **Object Pooling**: The 4 pipe pairs are recycled — a pipe exiting the left edge moves back to the right with freshly rolled gap size/position, so no allocation or GC churn during play.
 
 ## 🌍 Global Leaderboard

@@ -26,17 +26,25 @@ const NIGHT_CYCLE  = 40;             // points per full day->night->day cycle
 const DIFFICULTY = {
   gap:     { start: 160, end: 132, from: 10,  to: 60  }, // px vertical opening
   speed:   { start: 225, end: 350, from: 30,  to: 130 }, // px/s scrolling left
-  spacing: { start: 320, end: 260, from: 50,  to: 150 }, // px between pipe pairs
+  spacing: { start: 320, end: 220, from: 50,  to: 150 }, // px between pipe pairs
   wobble:  { start: 0,   end: 36,  from: 120, to: 170 }, // px pipe vertical sway
+  // vertical step between consecutive gap centers ("course shape"):
+  // gentle early, forced movement late, dives bigger than climbs
+  stepMin:  { start: 0,  end: 24,  from: 80, to: 150 }, // no aligned gaps late
+  stepRise: { start: 70, end: 65,  from: 0,  to: 150 }, // max upward step
+  stepFall: { start: 70, end: 110, from: 50, to: 150 }, // max downward step
 };
 function ramp({ start, end, from, to }, s) {
   const t = Math.min(1, Math.max(0, (s - from) / (to - from)));
   return start + (end - start) * t;
 }
-const gapFor     = s => ramp(DIFFICULTY.gap, s);
-const speedFor   = s => ramp(DIFFICULTY.speed, s);
-const spacingFor = s => ramp(DIFFICULTY.spacing, s);
-const wobbleFor  = s => ramp(DIFFICULTY.wobble, s);
+const gapFor      = s => ramp(DIFFICULTY.gap, s);
+const speedFor    = s => ramp(DIFFICULTY.speed, s);
+const spacingFor  = s => ramp(DIFFICULTY.spacing, s);
+const wobbleFor   = s => ramp(DIFFICULTY.wobble, s);
+const stepMinFor  = s => ramp(DIFFICULTY.stepMin, s);
+const stepRiseFor = s => ramp(DIFFICULTY.stepRise, s);
+const stepFallFor = s => ramp(DIFFICULTY.stepFall, s);
 const PIPE_COUNT   = 4;              // pooled pipe pairs
 const GAP_MARGIN   = 70;             // min distance of gap center from top/ground
 
@@ -503,26 +511,58 @@ let shakeT = 0;      // screen shake timer
 const SHAKE_DUR = 0.4;
 let nightT = 0;      // 0 = day, 1 = night; follows the score cycle smoothly
 
-function randomGapY(gap) {
-  const min = gap / 2 + GAP_MARGIN;
-  const max = GROUND_Y - gap / 2 - GAP_MARGIN;
-  return min + Math.random() * (max - min);
-}
+// How fast the bird can actually move vertically, for reachability clamps:
+// spamming flaps sustains ~270 px/s of climb; diving reaches ~650 px/s.
+const MAX_CLIMB_RATE = 260; // slightly conservative
+const MAX_DIVE_RATE = 500;
 
-function rollPipe(p, s) {
+function rollPipe(p, s, prev) {
   p.gap = gapFor(s);
-  p.amp = wobbleFor(s); // vertical sway amplitude (0 until score 100)
+  p.amp = wobbleFor(s); // vertical sway amplitude (0 until score 120)
   p.phase = Math.random() * Math.PI * 2;
   // reserve the sway range so the gap never wobbles into the ceiling/ground
-  p.baseY = randomGapY(p.gap + 2 * p.amp);
-  p.gapY = p.baseY;
+  const half = p.gap / 2 + p.amp + GAP_MARGIN;
+  const minY = half, maxY = GROUND_Y - half;
+
+  let y;
+  if (!prev) {
+    y = minY + Math.random() * (maxY - minY);
+  } else {
+    // Course shape: sample the STEP from the previous gap, not an absolute
+    // position — gentle steps early, forced movement late (stepMin), and
+    // asymmetric limits (dives can be bigger than climbs).
+    const stepMin = stepMinFor(s);
+    // reachability caps the rise regardless of the configured range: the
+    // bird can only climb ~260 px/s (flap-spamming) / dive ~500 px/s in
+    // the time between pipes, worst-case wobble subtracted
+    const t = spacingFor(s) / speedFor(s);
+    const riseCap = Math.max(40, 0.85 * t * MAX_CLIMB_RATE - p.amp - prev.amp);
+    const fallCap = Math.max(60, 0.90 * t * MAX_DIVE_RATE - p.amp - prev.amp);
+    const maxRise = Math.min(stepRiseFor(s), riseCap);
+    const maxFall = Math.min(stepFallFor(s), fallCap);
+
+    let up = Math.random() < 0.5;
+    // bounce off the ceiling/floor when there's no room for the min step
+    if (up && prev.baseY - stepMin < minY) up = false;
+    else if (!up && prev.baseY + stepMin > maxY) up = true;
+
+    const maxStep = up ? maxRise : maxFall;
+    const step = stepMin + Math.random() * Math.max(0, maxStep - stepMin);
+    y = prev.baseY + (up ? -step : step);
+    y = Math.max(minY, Math.min(maxY, y));
+  }
+
+  p.baseY = y;
+  p.gapY = y;
   p.scored = false;
 }
 
 function resetPipes() {
+  let prev = null;
   pipes.forEach((p, i) => {
     p.x = W + 150 + i * spacingFor(0);
-    rollPipe(p, 0);
+    rollPipe(p, 0, prev);
+    prev = p;
   });
 }
 
@@ -784,9 +824,9 @@ function update(dt) {
       // recycle pipe that left the screen (object pooling);
       // it captures the current difficulty's gap/wobble for its next pass
       if (p.x + PIPE_W < -CAP_OVER) {
-        const maxX = Math.max(...pipes.map(q => q.x));
-        p.x = maxX + spacingFor(score);
-        rollPipe(p, score);
+        const prev = pipes.reduce((a, b) => (a.x > b.x ? a : b)); // rightmost
+        p.x = prev.x + spacingFor(score);
+        rollPipe(p, score, prev);
       }
 
       // high-score pipes sway vertically around their base position
@@ -802,7 +842,8 @@ function update(dt) {
           (p.gapY + p.gap / 2) - bird.y
         ) - BIRD_R;
         if (clearance < 14) sfx.nearMiss();
-        sfx.point();
+        // the ding is a milestone reward, not a metronome: every 10th pipe
+        if (score % 10 === 0) sfx.point();
       }
 
       // collision
@@ -1272,6 +1313,19 @@ window.__flappy = {
   speedAt: s => speedFor(s),
   gapAt: s => gapFor(s),
   spacingAt: s => spacingFor(s),
+  // roll a chain of n gaps at difficulty score s, return consecutive deltas
+  simulateGaps(s, n) {
+    const prev = { baseY: GROUND_Y / 2, amp: wobbleFor(s) };
+    const deltas = [];
+    for (let i = 0; i < n; i++) {
+      const q = {};
+      rollPipe(q, s, prev);
+      deltas.push(q.baseY - prev.baseY);
+      prev.baseY = q.baseY;
+      prev.amp = q.amp;
+    }
+    return deltas;
+  },
   get masterGain() { return masterGain; },
 };
 

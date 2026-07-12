@@ -18,14 +18,16 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 ## Features
 
 - 🎨 Procedural pixel art — Faby, pipes, ground, clouds, and skyline, all drawn in code
-- 🔊 Web Audio sound effects — flap, score ding, hit smack, ground thud
+- 🔊 Web Audio sound effects — flap, milestone ding every 10 pipes, hit smack, ground thud
 - 💥 Physical impact effects — knockback recoil off pipes, tumble rotation, dampened
   ground bounce, screen shake, white flash, feather bursts and dust puffs, squash &
   stretch, and a near-miss whoosh when you graze a pipe
 - 📈 Progressive difficulty — the pipe gap tightens (160 → 132 px between scores 10
   and 60), scroll speed rises (225 → 350 px/s between scores 30 and 130), pipe
-  spacing shrinks (320 → 260 px between scores 50 and 150), and past 120 the pipes
-  start swaying vertically (up to ±36 px); all tunable via the `DIFFICULTY` config
+  spacing shrinks (320 → 220 px between scores 50 and 150), past 120 the pipes
+  start swaying vertically (up to ±36 px), and the course shape itself ramps —
+  gentle gap steps early, forced ≥ 24 px moves with dives up to 110 px late;
+  all tunable via the `DIFFICULTY` config
 - 🌙 Day → night cycle — the sky crossfades to a starry night as your score climbs,
   cycling back to day every 40 points
 - 📱 Adaptive screen — portrait phones get the original tall view (~1 pipe visible),
@@ -174,16 +176,39 @@ kept in one Redis sorted set; two serverless functions serve it.
 
 **Setup (one-time)**
 
-1. In the Vercel dashboard: **Marketplace → Upstash (Redis)** → create a free
-   database and connect it to the project. This injects the
-   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` env vars (the legacy
-   `KV_REST_API_*` names also work).
-2. Optionally add an `LB_SECRET` env var (any random string) to sign run tokens —
+1. **Create the database**: in the [Vercel dashboard](https://vercel.com/dashboard),
+   open **Marketplace** (or your project → **Storage** tab) → search for
+   **Upstash** → **Upstash for Redis** → create a free database. No separate
+   Upstash account is needed — Vercel provisions and manages it.
+2. **Connect it to this project**: during creation (or later from the database's
+   page → *Projects*), connect the database to the `flappy-bird` project. This
+   automatically adds the credentials to the project's **environment variables**
+   (Project → Settings → Environment Variables) — you'll see
+   `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_URL`, `REDIS_URL`, etc. The API
+   functions read `KV_REST_API_URL` / `KV_REST_API_TOKEN` (and also accept the
+   newer `UPSTASH_REDIS_REST_*` names).
+3. **Nothing to copy for production** — since the env vars are already on the
+   project, deployed functions just work. You only need a local copy of the keys
+   (as `.env.local`, downloadable from the database page or via
+   `vercel env pull .env.local`) if you want to run the API locally with
+   `vercel dev`. `.env*` files are gitignored — never commit them; the tokens
+   grant full read/write to the database.
+4. Optionally add an `LB_SECRET` env var (any random string) to sign run tokens —
    otherwise the Redis token doubles as the signing secret.
-3. Redeploy. Done — no schema, no migrations.
+5. **Redeploy** (`vercel --prod` or push): env vars only take effect on the next
+   deployment. Done — no schema, no migrations.
 
-To test the API locally, use `vercel dev` (after `vercel env pull`); a plain
-static server serves the game fine but the board will just show "offline".
+Verify it's live:
+
+```bash
+curl https://<your-app>.vercel.app/api/leaderboard
+# {"board":[]}  -> working; play a run and your name will appear
+# {"error":"leaderboard not configured"} -> env vars missing; check step 2, redeploy
+```
+
+For local development, a plain static server serves the game fine but the board
+will just show "offline" — use `vercel dev` (with `.env.local` present) to run
+the functions too.
 
 ## Troubleshooting
 
