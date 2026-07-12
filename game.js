@@ -542,14 +542,20 @@ function rollPipe(p, s, prev) {
     const maxFall = Math.min(stepFallFor(s), fallCap);
 
     let up = Math.random() < 0.5;
-    // bounce off the ceiling/floor when there's no room for the min step
-    if (up && prev.baseY - stepMin < minY) up = false;
-    else if (!up && prev.baseY + stepMin > maxY) up = true;
+    // Room-aware bounce: flip direction when there's no meaningful room
+    // toward the wall. Without this (and with the step capped by room
+    // below), a step toward the ceiling/floor would clamp back onto the
+    // wall and produce runs of identical gap heights.
+    const roomUp = prev.baseY - minY;
+    const roomDown = maxY - prev.baseY;
+    const need = Math.max(stepMin, 12);
+    if (up && roomUp < need) up = false;
+    else if (!up && roomDown < need) up = true;
 
-    const maxStep = up ? maxRise : maxFall;
+    const maxStep = Math.min(up ? maxRise : maxFall, up ? roomUp : roomDown);
     const step = stepMin + Math.random() * Math.max(0, maxStep - stepMin);
     y = prev.baseY + (up ? -step : step);
-    y = Math.max(minY, Math.min(maxY, y));
+    y = Math.max(minY, Math.min(maxY, y)); // safety only; step already fits
   }
 
   p.baseY = y;
