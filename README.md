@@ -34,10 +34,11 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
   desktops get a wide 800×600 view (2–3 pipes); identical difficulty on both
 - 🖥️ Crisp on high-DPI/Retina displays (`devicePixelRatio`-aware rendering)
 - 🏅 Medals (Bronze / Silver / Gold / Platinum at 25 / 50 / 100 / 150 points) and a
-  best score persisted in `localStorage`
+  best score persisted in `localStorage` — it lives in the player's browser, so
+  redeployments never reset it
 - ⚙️ Delta-time physics (consistent speed on 60 Hz and 144 Hz monitors) and pipe
   object pooling (no GC stutter)
-- 🌍 Global leaderboard for your friend group (**optional**) — one Redis sorted set
+- 🌍 Global leaderboard for your friend group — one Redis sorted set
   behind two Vercel serverless functions, with a run-duration plausibility check
   (see below). No Redis? The game plays exactly the same; the leaderboard UI
   simply doesn't appear.
@@ -74,6 +75,7 @@ No sound? See [Troubleshooting](#troubleshooting).
 │   └── leaderboard.js   # GET: top 10 · POST: submit a score
 └── docs/
     ├── 1-spec.md    # game specification
+    ├── screens.png  # screenshots of this clone
     └── flappy-bird-screens.jpg  # original game reference screens
 ```
 
@@ -85,15 +87,15 @@ bounce restitution, spin rate) in `die()` and the `DYING` branch of `update()`.
 
 ## Deploy to Vercel
 
-This is a pure static site, so it deploys to Vercel with zero configuration —
-no framework preset, no build command, no output directory.
+This is a pure static site (plus the optional leaderboard functions), so it deploys
+with zero configuration — no framework preset, no build command, no output
+directory, no `vercel.json`. Deployment goes through **Git integration**: every
+push deploys automatically.
 
 ### Prerequisites
 
 1. **A Vercel account** — the free Hobby plan is enough: [vercel.com/signup](https://vercel.com/signup).
-2. **Log in once from the CLI** (Option A): `vercel login` — it opens the browser to
-   authenticate. (Option B authenticates through the dashboard instead.)
-3. **Make the game public** — new Vercel projects ship with **Deployment Protection
+2. **Make the game public** — new Vercel projects ship with **Deployment Protection
    (Vercel Authentication) enabled**, so visitors get a Vercel login wall instead of
    the game. To let anyone play: in the Vercel dashboard go to your project →
    **Settings → Deployment Protection → Vercel Authentication** and set it to
@@ -101,32 +103,7 @@ no framework preset, no build command, no output directory.
    to stay private while the production URL is public). There's nothing sensitive in
    a static game, so disabling it is fine.
 
-### Option A — Vercel CLI (fastest)
-
-```bash
-# install the CLI once
-npm i -g vercel
-
-# from the project root
-cd flappy-bird
-vercel          # preview deployment — answer the prompts (defaults are fine)
-vercel --prod   # production deployment
-```
-
-When prompted:
-
-- **Set up and deploy?** → `Y`
-- **Which scope?** → your account
-- **Link to existing project?** → `N` (first time)
-- **Project name?** → `flappy-bird` (or anything you like)
-- **In which directory is your code located?** → `./`
-- Vercel auto-detects **no framework** — accept the defaults (no build command,
-  no output directory)
-
-You'll get a live URL like `https://flappy-bird-<hash>.vercel.app` for the preview,
-and your production URL after `vercel --prod`.
-
-### Option B — Git integration (auto-deploy on push)
+### Deploy via Git integration
 
 1. Push this folder to a GitHub/GitLab/Bitbucket repository.
 2. Go to [vercel.com/new](https://vercel.com/new) and **Import** the repository.
@@ -138,27 +115,6 @@ and your production URL after `vercel --prod`.
 
 Every push to the default branch now deploys to production automatically, and every
 pull request gets its own preview URL.
-
-### Notes
-
-- No `vercel.json` is needed. If you ever want cache headers for the game files, a
-  minimal one would be:
-
-  ```json
-  {
-    "headers": [
-      {
-        "source": "/(.*)\\.(js|css)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
-        ]
-      }
-    ]
-  }
-  ```
-
-- The best score is stored in the player's browser (`localStorage`), so it survives
-  deployments — nothing server-side to configure.
 
 ## Global leaderboard (optional)
 
@@ -205,7 +161,7 @@ button, name prompt, and score submission simply don't exist.
    grant full read/write to the database.
 4. Optionally add an `LB_SECRET` env var (any random string) to sign run tokens —
    otherwise the Redis token doubles as the signing secret.
-5. **Redeploy** (`vercel --prod` or push): env vars only take effect on the next
+5. **Redeploy** (push any commit): env vars only take effect on the next
    deployment. Done — no schema, no migrations.
 
 Verify it's live:
