@@ -590,7 +590,8 @@ function goReady() {
 
 function startPlay() {
   state = STATE.PLAY;
-  runTokenPromise = api.startRun(); // timestamps the run for the leaderboard
+  // timestamps the run for the leaderboard (only when the API exists)
+  runTokenPromise = lbAvailable ? api.startRun() : null;
   flap();
 }
 
@@ -649,6 +650,21 @@ let askedNick = false;      // don't re-prompt within a session after a skip
 const boardRects = { back: null, name: null }; // hit areas, set during draw
 
 const API_AVAILABLE = location.protocol !== 'file:'; // no functions without a server
+
+// The leaderboard UI only appears once the API proves reachable — with no
+// backend (plain html file, static server, unconfigured deploy) the game
+// simply has no leaderboard: no buttons, no panel, no prompts, no errors.
+let lbAvailable = false;
+if (API_AVAILABLE) {
+  fetch('api/leaderboard')
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error('unavailable'))))
+    .then(j => {
+      board = j.board || [];
+      boardStatus = 'ready';
+      lbAvailable = true;
+    })
+    .catch(() => { lbAvailable = false; });
+}
 
 const api = {
   async startRun() {
@@ -1025,7 +1041,7 @@ function render() {
     fancyTitleText('Flappy Bird', W / 2, 150, 64 * us, '#8ed94e');
     outlinedText('meet Faby the bird', W / 2, 210, 18 * us, '#ffffff', { lw: 4 });
     drawButton(startBtn, 'START');
-    drawButton(titleBoardBtn, '🏆', true);
+    if (lbAvailable) drawButton(titleBoardBtn, '🏆', true);
     ctx.fillStyle = 'rgba(84,56,71,0.85)';
     ctx.font = '13px "Trebuchet MS", sans-serif';
     ctx.textAlign = 'center';
@@ -1099,7 +1115,7 @@ function render() {
 
     if (ease >= 1) {
       drawButton(againBtn, 'TRY AGAIN');
-      drawButton(overBoardBtn, '🏆', true);
+      if (lbAvailable) drawButton(overBoardBtn, '🏆', true);
       if (!IS_TOUCH) outlinedText('or press R', W / 2, 495, 14, '#ffffff', { lw: 3 });
     }
   }
@@ -1226,7 +1242,7 @@ function press(x, y) {
   }
   switch (state) {
     case STATE.TITLE:
-      if (x !== null && inBtn(titleBoardBtn, x, y)) { openBoard(); break; }
+      if (lbAvailable && x !== null && inBtn(titleBoardBtn, x, y)) { openBoard(); break; }
       if (x === null || inBtn(startBtn, x, y)) goReady();
       break;
     case STATE.READY:
@@ -1236,7 +1252,7 @@ function press(x, y) {
       if (!paused) flap();
       break;
     case STATE.OVER:
-      if (x !== null && inBtn(overBoardBtn, x, y)) { openBoard(); break; }
+      if (lbAvailable && x !== null && inBtn(overBoardBtn, x, y)) { openBoard(); break; }
       if (x !== null ? inBtn(againBtn, x, y) : time - overAt > 0.5) goReady();
       break;
   }
@@ -1316,6 +1332,7 @@ window.__flappy = {
   get pipes() { return pipes.map(p => ({ x: p.x, gapY: p.gapY, gap: p.gap })); },
   get nightT() { return nightT; },
   get audioState() { return actx ? actx.state : 'none'; },
+  get lbAvailable() { return lbAvailable; },
   speedAt: s => speedFor(s),
   gapAt: s => gapFor(s),
   spacingAt: s => spacingFor(s),

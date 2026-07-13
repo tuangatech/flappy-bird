@@ -37,8 +37,10 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
   best score persisted in `localStorage`
 - ⚙️ Delta-time physics (consistent speed on 60 Hz and 144 Hz monitors) and pipe
   object pooling (no GC stutter)
-- 🌍 Global leaderboard for your friend group — one Redis sorted set behind two
-  Vercel serverless functions, with a run-duration plausibility check (see below)
+- 🌍 Global leaderboard for your friend group (**optional**) — one Redis sorted set
+  behind two Vercel serverless functions, with a run-duration plausibility check
+  (see below). No Redis? The game plays exactly the same; the leaderboard UI
+  simply doesn't appear.
 
 ## Controls
 
@@ -48,12 +50,15 @@ See [docs/1-spec.md](docs/1-spec.md) for the full game specification.
 | `P` | Pause / resume (auto-pauses when the window loses focus) |
 | `R` | Restart after game over |
 | `M` / click 🔊 icon | Mute / unmute (remembered in `localStorage`) |
-| 🏆 button | Leaderboard (title & game-over screens); `Esc` closes |
+| 🏆 button | Leaderboard (title & game-over screens); `Esc` closes. Only shown when the optional backend is set up |
 
 ## Run locally
 
 No build step, no dependencies. The easiest way: **double-click `index.html`**
-(or drag it into a browser) — the game just runs.
+(or drag it into a browser) — the game just runs. The
+[global leaderboard](#global-leaderboard-optional) is optional and needs a
+deployed backend; without one the game plays identically, with no errors — the
+🏆 button just doesn't appear.
 
 No sound? See [Troubleshooting](#troubleshooting).
 
@@ -155,10 +160,15 @@ pull request gets its own preview URL.
 - The best score is stored in the player's browser (`localStorage`), so it survives
   deployments — nothing server-side to configure.
 
-## Global leaderboard
+## Global leaderboard (optional)
 
 A tiny global board for a small friend group. Each player's **personal best** is
 kept in one Redis sorted set; two serverless functions serve it.
+
+**Entirely optional.** The game detects at load whether the leaderboard API is
+reachable. Without it — playing the plain `index.html`, a static server, or a
+deploy with no database — the game runs exactly the same with no errors; the 🏆
+button, name prompt, and score submission simply don't exist.
 
 **How it works**
 
@@ -171,8 +181,8 @@ kept in one Redis sorted set; two serverless functions serve it.
   token (`GET /api/run`). On submit, the server derives the run's true wall-clock
   duration from it and rejects scores that are physically impossible for that time
   (based on max pipe rate) — enough to stop casual `curl` pranks.
-- Offline / local file: everything degrades gracefully — the board shows "offline"
-  and the game is unaffected.
+- If the API becomes unreachable mid-session, everything degrades gracefully —
+  fetches are swallowed and the game is unaffected.
 
 **Setup (one-time)**
 
@@ -206,9 +216,9 @@ curl https://<your-app>.vercel.app/api/leaderboard
 # {"error":"leaderboard not configured"} -> env vars missing; check step 2, redeploy
 ```
 
-For local development, a plain static server serves the game fine but the board
-will just show "offline" — use `vercel dev` (with `.env.local` present) to run
-the functions too.
+For local development, a plain static server serves the game fine — the
+leaderboard UI just won't appear (no functions). Use `vercel dev` (with
+`.env.local` present) to run the functions locally too.
 
 ## Troubleshooting
 
